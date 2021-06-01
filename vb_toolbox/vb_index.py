@@ -12,6 +12,7 @@ import scipy.linalg as spl
 import traceback
 import vb_toolbox.io as io
 import vb_toolbox.numerics as m
+import time
 
 counter = None
 n = None
@@ -119,7 +120,6 @@ def vb_index(surf_vertices, surf_faces, n_cpus, data, norm, cort_index, output_n
        result: (N) numpy array
                    Resulting VB index of the indices in range
     """
-
     # Calculate how many vertices each process is going to be responsible for
     n_items = len(surf_vertices)
     n_cpus = min(n_items, n_cpus)
@@ -153,7 +153,7 @@ def vb_index(surf_vertices, surf_faces, n_cpus, data, norm, cort_index, output_n
     pool.close()
     pool.terminate()
     pool.join()
-
+    
     return results
 
 def vb_cluster_internal_loop(idx_cluster_0, idx_cluster_N, surf_faces, data, cluster_index, norm, print_progress=False):
@@ -417,7 +417,6 @@ def vb_hybrid(surf_vertices, brain_mask, affine, n_cpus, data, norm, cort_index,
        result: (N) numpy array
                    Resulting VB index of the indices in range
     """
-
     # Convert vertex coordinates to voxel coordinates
     vox_coords = np.round(nibabel.affines.apply_affine(np.linalg.inv(affine),surf_vertices))
 
