@@ -9,6 +9,10 @@
 import numpy as np
 import scipy.linalg as spl
 import warnings
+import scipy
+from scipy.sparse.linalg import lobpcg
+import time
+import json
     
 class TimeSeriesTooShortError(Exception):
     """Raised when the time series in the input data have less than three elements"""
@@ -129,6 +133,38 @@ def get_fiedler_eigenpair(Q, D=None, is_symmetric=True):
                     The Fiedler vector
     """
     
+    start1 = time.time()
+    
+    X = scipy.rand(Q.shape[0],2)
+    eps = np.finfo(float).eps
+    tol_standard = Q.shape[0]*np.sqrt(eps)
+    tol = tol_standard*(10**(-3))
+    maxiter = 50
+    eigenvalues_lobpcg, eigenvectors_lobpcg, eigval_hist, res_norm_hist = lobpcg(Q, X, B=D, tol=tol, maxiter = maxiter, largest=False, retLambdaHistory=True, retResidualNormsHistory=True)
+#    eigenvalues_lobpcg, eigenvectors_lobpcg, eigval_hist, res_norm_hist = lobpcg(Q, X, B=D, largest=False, retLambdaHistory=True, retResidualNormsHistory=True)
+  
+    print('tol_standard : ', tol_standard, '\n')
+
+    eigenvalues_lobpcg = np.real(eigenvalues_lobpcg)
+    eigenvectors_lobpcg = np.real(eigenvectors_lobpcg)
+    
+    sort_eigen_lobpcg = np.argsort(eigenvalues_lobpcg)
+    eigenvalues_lobpcg = eigenvalues_lobpcg[sort_eigen_lobpcg]
+    if D is not None:
+        D_inv = np.diag(np.reciprocal(np.diag(D)))
+        normalisation_factor_lobpcg = np.trace(D_inv @ Q)/(Q.shape[0]-1)
+    else:
+    	normalisation_factor_lobpcg = np.trace(Q)/(Q.shape[0]-1)
+    second_smallest_eigval_lobpcg = eigenvalues_lobpcg[1]/normalisation_factor_lobpcg
+    fiedler_vector_lobpcg = eigenvectors_lobpcg[:, sort_eigen_lobpcg[1]]
+    eT_De_fiedler_lobpcg = fiedler_vector_lobpcg.transpose() @ (D @ fiedler_vector_lobpcg)
+    
+    end1 = time.time()
+    time_taken_by_lobpcg = end1-start1
+    
+    
+    start2 = time.time()
+   
     if is_symmetric:
         eigenvalues, eigenvectors = spl.eigh(Q, D, check_finite=False)
     else:
@@ -146,6 +182,28 @@ def get_fiedler_eigenpair(Q, D=None, is_symmetric=True):
     if (is_symmetric == False) and (D is not None):
         n = np.matmul(fiedler_vector.transpose(), np.matmul(D, fiedler_vector))
         fiedler_vector = fiedler_vector/np.sqrt(n)
+        
+    end2 = time.time() 
+    time_taken_by_eigh = end2-start2
+    
+
+    vectorF = fiedler_vector
+    vectorF_lobpcg = fiedler_vector_lobpcg
+    mag_vectorF = np.sqrt(vectorF.transpose() @ vectorF)
+    mag_vectorF_lobpcg = np.sqrt(vectorF_lobpcg.transpose() @ vectorF_lobpcg)
+    dot_product_F = (vectorF @ vectorF_lobpcg)/(mag_vectorF*mag_vectorF_lobpcg)
+    ratio_magF = mag_vectorF/mag_vectorF_lobpcg
+
+    eigenvalue0 = eigenvalues[0]/normalisation_factor
+    eigenvalue0_lobpcg = eigenvalues_lobpcg[0]/normalisation_factor_lobpcg
+    eigenvalueF = second_smallest_eigval
+    eigenvalueF_lobpcg = second_smallest_eigval_lobpcg
+
+    data_for_output = {"time taken by eigh process": str(time_taken_by_eigh), "time taken by lobpcg process": str(time_taken_by_lobpcg), "dot product between eigh and lobpcg fiedler vectors": str(dot_product_F), "ratio of magnitudes of eigh and lobpcg fiedler vectors": str(ratio_magF), "smallest eigenvalue eigh": str(eigenvalue0), "algebraic connectivity eigh": str(eigenvalueF), "smallest eigenvalue lobpcg": str(eigenvalue0_lobpcg), "algebraic connectivity lobpcg": str(eigenvalueF_lobpcg), "eigenvalue history lobpcg": str(eigval_hist), "residual norms history lobpcg": str(res_norm_hist), "eT.D.e for fiedler vector lobpcg": str(eT_De_fiedler_lobpcg)}
+    
+    json_obj = json.dumps(data_for_output, indent = 11)
+    with open("output.json", "w") as outfile:
+        outfile.write(json_obj)
 
     return second_smallest_eigval, fiedler_vector
     
