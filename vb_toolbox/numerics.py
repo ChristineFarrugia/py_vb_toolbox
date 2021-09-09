@@ -208,6 +208,7 @@ def spectral_reorder(B, method = 'geig'):
         # un-normalised Laplacian (see Shi and Malik, 2000)
 
         eigenvalue, eigenvector = get_fiedler_eigenpair(Q, D)
+        np.savetxt("L_diag.dat", np.diag(Q))
 
     elif method == 'sym':
         # Method using the eigen decomposition of the Symmetric Normalized
