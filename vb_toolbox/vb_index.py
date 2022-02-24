@@ -12,7 +12,6 @@ import scipy.linalg as spl
 import traceback
 import vb_toolbox.io as io
 import vb_toolbox.numerics as m
-import time
 
 counter = None
 n = None
@@ -28,7 +27,7 @@ def init(a_counter, a_n):
     counter = a_counter
     n = a_n
 
-def vb_index_internal_loop(i0, iN, surf_faces, data, norm, print_progress=False):
+def vb_index_internal_loop(i0, iN, surf_faces, data, norm, residual_tolerance, max_num_iter, print_progress=False):
     """Computes the Vogt-Bailey index of vertices in a given range
 
        Parameters
@@ -72,7 +71,7 @@ def vb_index_internal_loop(i0, iN, surf_faces, data, norm, print_progress=False)
 
             # Calculate the second smallest eigenvalue
             affinity = m.create_affinity_matrix(neighborhood)
-            _, _, eigenvalue, _ = m.spectral_reorder(affinity, norm)
+            _, _, eigenvalue, _ = m.spectral_reorder(affinity, residual_tolerance, max_num_iter, norm)
 
             # return [0]
             # Store the result of this run
@@ -93,7 +92,7 @@ def vb_index_internal_loop(i0, iN, surf_faces, data, norm, print_progress=False)
 
     return loc_result
 
-def vb_index(surf_vertices, surf_faces, n_cpus, data, norm, cort_index, output_name=None, nib_surf=None):
+def vb_index(surf_vertices, surf_faces, n_cpus, data, norm, cort_index, residual_tolerance, max_num_iter, output_name=None, nib_surf=None):
     """Computes the Vogt-Bailey index of vertices for the whole mesh
 
        Parameters
@@ -120,7 +119,7 @@ def vb_index(surf_vertices, surf_faces, n_cpus, data, norm, cort_index, output_n
        result: (N) numpy array
                Resulting VB index of the indices in range
     """
-
+    
     # Calculate how many vertices each process is going to be responsible for
     n_items = len(surf_vertices)
     n_cpus = min(n_items, n_cpus)
@@ -139,7 +138,7 @@ def vb_index(surf_vertices, surf_faces, n_cpus, data, norm, cort_index, output_n
     threads = []
     for i0 in range(0, n_items, dn):
         iN = min(i0+dn, n_items)
-        threads.append(pool.apply_async(vb_index_internal_loop, (i0, iN, surf_faces, data, norm), error_callback=callback))
+        threads.append(pool.apply_async(vb_index_internal_loop, (i0, iN, surf_faces, data, norm, residual_tolerance, max_num_iter), error_callback=callback))
 
 
     # Gather the results from the threads we just spawned
@@ -159,10 +158,10 @@ def vb_index(surf_vertices, surf_faces, n_cpus, data, norm, cort_index, output_n
     pool.close()
     pool.terminate()
     pool.join()
-    
+
     return results
 
-def vb_cluster_internal_loop(idx_cluster_0, idx_cluster_N, surf_faces, data, cluster_index, norm, print_progress=False):
+def vb_cluster_internal_loop(idx_cluster_0, idx_cluster_N, surf_faces, data, cluster_index, norm, residual_tolerance, max_num_iter, print_progress=False):
     """Computes the Vogt-Bailey index and Fiedler vector of vertices of given clusters
 
        Parameters
@@ -206,7 +205,7 @@ def vb_cluster_internal_loop(idx_cluster_0, idx_cluster_N, surf_faces, data, clu
 
             # Calculate the Fiedler eigenpair
             affinity = m.create_affinity_matrix(neighborhood)
-            _, _, eigenvalue, eigenvector = m.spectral_reorder(affinity, norm)
+            _, _, eigenvalue, eigenvector = m.spectral_reorder(affinity, residual_tolerance, max_num_iter, norm)
 
             # Store the result of this run
             # Warning: It is not true that the eigenvectors will be all the same
@@ -229,7 +228,7 @@ def vb_cluster_internal_loop(idx_cluster_0, idx_cluster_N, surf_faces, data, clu
 
     return loc_result
 
-def vb_cluster(surf_vertices, surf_faces, n_cpus, data, cluster_index, norm, output_name = None, nib_surf=None):
+def vb_cluster(surf_vertices, surf_faces, n_cpus, data, cluster_index, norm, residual_tolerance, max_num_iter, output_name = None, nib_surf=None):
     """Computes the clustered Vogt-Bailey index and Fiedler vector of vertices for the whole mesh
 
        Parameters
@@ -282,7 +281,7 @@ def vb_cluster(surf_vertices, surf_faces, n_cpus, data, cluster_index, norm, out
     threads = []
     for i0 in range(0, n_items, dn):
         iN = min(i0+dn, n_items)
-        threads.append(pool.apply_async(vb_cluster_internal_loop, (i0, iN, surf_faces, data, cluster_index, norm), error_callback=callback))
+        threads.append(pool.apply_async(vb_cluster_internal_loop, (i0, iN, surf_faces, data, cluster_index, norm, residual_tolerance, max_num_iter), error_callback=callback))
 
 
     # Gather the results from the threads we just spawned
@@ -333,7 +332,7 @@ def get_neighborhood(data,p,mask,n=1):
 
     return data[neigh_coords[masked_neigh,0],neigh_coords[masked_neigh,1], neigh_coords[masked_neigh,2],:]
 
-def vb_hybrid_internal_loop(i0, iN, surf_vertices, brain_mask, data, norm, print_progress=False):
+def vb_hybrid_internal_loop(i0, iN, surf_vertices, brain_mask, data, norm, residual_tolerance, max_num_iter, print_progress=False):
     """Computes the Vogt-Bailey index of vertices in a given range
 
        Parameters
@@ -381,7 +380,7 @@ def vb_hybrid_internal_loop(i0, iN, surf_vertices, brain_mask, data, norm, print
                 #tr_row, tr_col = np.triu_indices(affinity.shape[0], k=1)
             
                 # Calculate the second smallest eigenvalue
-                _, _, eigenvalue, _ = m.spectral_reorder(affinity, norm)
+                _, _, eigenvalue, _ = m.spectral_reorder(affinity, residual_tolerance, max_num_iter, norm)
                 # return [0]
                 # Store the result of this run
                 loc_result[idx] = eigenvalue
@@ -406,7 +405,7 @@ def vb_hybrid_internal_loop(i0, iN, surf_vertices, brain_mask, data, norm, print
 
     return loc_result
 	
-def vb_hybrid(surf_vertices, brain_mask, affine, n_cpus, data, norm, cort_index, output_name=None, nib_surf=None):
+def vb_hybrid(surf_vertices, brain_mask, affine, n_cpus, data, norm, cort_index, residual_tolerance, max_num_iter, output_name=None, nib_surf=None):
     """Computes the Vogt-Bailey index of vertices for the whole mesh
 
        Parameters
@@ -433,7 +432,7 @@ def vb_hybrid(surf_vertices, brain_mask, affine, n_cpus, data, norm, cort_index,
        result: (N) numpy array
                Resulting VB index of the indices in range
     """
-
+    
     # Convert vertex coordinates to voxel coordinates
     vox_coords = np.round(nibabel.affines.apply_affine(np.linalg.inv(affine),surf_vertices))
 
@@ -454,7 +453,7 @@ def vb_hybrid(surf_vertices, brain_mask, affine, n_cpus, data, norm, cort_index,
     threads = []
     for i0 in range(0, n_items, dn):
         iN = min(i0+dn, n_items)
-        threads.append(pool.apply_async(vb_hybrid_internal_loop, (i0, iN, vox_coords, brain_mask, data, norm), error_callback=callback))
+        threads.append(pool.apply_async(vb_hybrid_internal_loop, (i0, iN, vox_coords, brain_mask, data, norm, residual_tolerance, max_num_iter), error_callback=callback))
 
 
     # Gather the results from the threads we just spawned
