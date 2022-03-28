@@ -6,6 +6,9 @@
 #
 # Distributed under terms of the GNU license.
 
+#import sys
+#sys.path.append('/home/cfarr05/Documents/py_vb_toolbox/')
+
 import argparse
 import multiprocessing
 import nibabel
@@ -51,19 +54,15 @@ def create_parser():
                         will be spawned.""")
 
     parser.add_argument('-n', '--norm', metavar='norm', type=str, nargs=1,
-                        default=["geig"], help="""Laplacian normalization to be
+                        help="""Laplacian normalization to be
                         used. Possibilities are "geig", "unnorm", "rw" and
-                        "sym". Defaults to geig.""")
+                        "sym". Defaults to geig for the full brain and ROI analyses, and to unnorm otherwise.""")
 
     parser.add_argument('-fb', '--full-brain', action='store_true',
                         help="""Calculate full brain feature gradient analysis.""")
 
     parser.add_argument('-hy', '--hybrid', action='store_true',
                         help="""Calculate VB index with hybrid approach.""")
-
-    parser.add_argument('-vm', '--volmask', metavar='file', type=str,
-                               nargs=1, default=None, help="""Nifti file containing the whole brain mask
-                               in volumetric space. This flag must be set if computing hybrid VB.""")
 
     parser.add_argument('-m', '--mask', metavar='file', type=str,
                                nargs=1, help="""File containing the labels to
@@ -82,6 +81,9 @@ def create_parser():
                         
     parser.add_argument('-mi', '--maxiter', metavar='max iterations', type=int, nargs=1, default=[50],
                         help="""Maximum number of iterations for LOBPCG. Defaults to 50.""")
+    
+    parser.add_argument('-debug', '--debug', action='store_true',
+                        help="""Save additional files for debugging.""")
 
     requiredNamed = parser.add_argument_group('required named arguments')
 
@@ -145,10 +147,14 @@ def main():
             quit()
         # Read labels
         _, labels = io.open_gifti(args.mask[0])
-        cort_index = np.array(labels, np.bool)
-        Z = np.array(cort_index, dtype=np.int)
+        cort_index = np.array(labels, bool)
+        Z = np.array(cort_index, dtype=int)
+        if args.norm is None:
+            L_norm = 'geig'
+        else:
+            L_norm = args.norm[0]
         try:
-            result = vb.vb_cluster(vertices, faces, n_cpus, data, Z, args.norm[0], args.tol[0], args.maxiter[0], args.output[0] + "." + args.norm[0], nib_surf)
+            result = vb.vb_cluster(True, vertices, faces, n_cpus, data, Z, L_norm, args.tol[0], args.maxiter[0], args.output[0] + "." + L_norm, nib_surf)
         except Exception as error:
             sys.stderr.write(str(error))
             sys.exit(2)
@@ -161,19 +167,17 @@ def main():
                 sys.stderr.write("A mask file must be provided through the --mask flag. See --help")
                 sys.exit(2)
                 quit()
-            if args.volmask is None:
-                sys.stderr.write("A volumetric mask file must be provided through the --volmask flag. See --help")
-                sys.exit(2)
-                quit()
           
             # Read labels
             _, labels = io.open_gifti(args.mask[0])
-            cort_index = np.array(labels, np.bool)
+            cort_index = np.array(labels, bool)
             # Read brain mask
-            brainmask = nibabel.load(args.volmask[0])
-            brainmask = np.array(brainmask.dataobj)
+            if args.norm is None:
+                L_norm = 'unnorm'
+            else:
+                L_norm = args.norm[0]
             try:
-                result = vb.vb_hybrid(vertices, brainmask, affine, n_cpus, data, args.norm[0], cort_index, args.tol[0], args.maxiter[0], args.output[0] + "." + args.norm[0], nib_surf)
+                result = vb.vb_hybrid(vertices, faces, affine, n_cpus, data, L_norm, cort_index, args.tol[0], args.maxiter[0], args.output[0] + "." + L_norm, nib_surf, k=3, debug=args.debug)
             except Exception as error:
                 sys.stderr.write(str(error))
                 sys.exit(2)
@@ -186,9 +190,13 @@ def main():
                 quit()
             # Read labels
             _, labels = io.open_gifti(args.mask[0])
-            cort_index = np.array(labels, np.bool)
+            cort_index = np.array(labels, bool)
+            if args.norm is None:
+                L_norm = 'unnorm'
+            else:
+                L_norm = args.norm[0]
             try:
-                result = vb.vb_index(vertices, faces, n_cpus, data, args.norm[0], cort_index, args.tol[0], args.maxiter[0], args.output[0] + "." + args.norm[0], nib_surf)
+                result = vb.vb_index(vertices, faces, n_cpus, data, L_norm, cort_index, args.tol[0], args.maxiter[0], args.output[0] + "." + L_norm, nib_surf)
             except Exception as error:
                 sys.stderr.write(str(error))
                 sys.exit(2)
@@ -201,8 +209,12 @@ def main():
             quit()
         nib, Z = io.open_gifti(args.clusters[0])
         Z = np.array(Z, dtype=np.int)
+        if args.norm is None:
+            L_norm = 'geig'
+        else:
+            L_norm = args.norm[0]
         try:
-            result = vb.vb_cluster(vertices, faces, n_cpus, data, Z, args.norm[0], args.tol[0], args.maxiter[0], args.output[0] + "." + args.norm[0], nib_surf)
+            result = vb.vb_cluster(False, vertices, faces, n_cpus, data, Z, L_norm, args.tol[0], args.maxiter[0], args.output[0] + "." + L_norm, nib_surf)
         except Exception as error:
             sys.stderr.write(str(error))
             sys.exit(2)
